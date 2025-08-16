@@ -4,4 +4,4 @@ numpy
 scipy
 requests
 python-dotenv
-ibm-watson-machine-learning==1.0.391 --no-deps
+ibm-watson-machine-learning==1.0.391
