@@ -2,47 +2,44 @@ import streamlit as st
 import cv2
 import numpy as np
 from scipy.io.wavfile import write
-import requests
-from ibm_watson import VisualRecognitionV3
+from ibm_watson import NaturalLanguageUnderstandingV1
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
+from ibm_watson.natural_language_understanding_v1 import Features, CategoriesOptions
 import os
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# --- App Title ---
-st.title("🎨 Watson Synesthesia: Color to Sound")
+st.title("🎨 Synesthesia AI: Color to Sound")
 
-# --- Configuration ---
+# Configuration
 API_KEY = os.getenv("WATSON_API_KEY") or st.secrets.get("WATSON_API_KEY")
-SERVICE_URL = os.getenv("SERVICE_URL") or "https://api.us-south.visual-recognition.watson.cloud.ibm.com"
+SERVICE_URL = os.getenv("SERVICE_URL") or "https://api.us-south.natural-language-understanding.watson.cloud.ibm.com"
 
-# --- Initialize Watson Services ---
 if not API_KEY:
     API_KEY = st.text_input("Enter IBM Cloud API Key", type="password")
 
 if API_KEY:
     try:
-        # Initialize Visual Recognition
+        # Initialize Watson NLU service
         authenticator = IAMAuthenticator(API_KEY)
-        visual_recognition = VisualRecognitionV3(
-            version='2018-03-19',
+        nlu = NaturalLanguageUnderstandingV1(
+            version='2022-04-07',
             authenticator=authenticator
         )
-        visual_recognition.set_service_url(SERVICE_URL)
+        nlu.set_service_url(SERVICE_URL)
 
-        # --- Image Upload ---
+        # Image processing (same as before)
         uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
         
         if uploaded_file:
-            # Process image
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             st.image(img_rgb, caption="Your Image", use_column_width=True)
             
-            # --- Color Analysis ---
+            # Color analysis (same as before)
             pixels = img_rgb.reshape(-1, 3)
             pixels = np.float32(pixels)
             _, labels, centers = cv2.kmeans(
@@ -52,13 +49,12 @@ if API_KEY:
             )
             dominant_color = np.uint8(centers[np.bincount(labels.flatten()).argmax()])
             
-            # --- Sound Generation ---
+            # Sound generation (same as before)
             color_map = {
                 'red': (440, 'sine'),
                 'green': (523.25, 'square'),
                 'blue': (659.25, 'sawtooth')
             }
-            
             color_distances = {
                 'red': np.linalg.norm(dominant_color - [255, 0, 0]),
                 'green': np.linalg.norm(dominant_color - [0, 255, 0]),
@@ -67,7 +63,6 @@ if API_KEY:
             closest_color = min(color_distances, key=color_distances.get)
             freq, wave_type = color_map[closest_color]
             
-            # Generate audio
             duration = 2.0
             sr = 44100
             t = np.linspace(0, duration, int(sr * duration), False)
@@ -82,20 +77,19 @@ if API_KEY:
             audio = (audio * 32767 * 0.3 / np.max(np.abs(audio))).astype(np.int16)
             st.audio(audio, sample_rate=sr)
             
-            # --- Watson Analysis ---
-            with st.spinner("Analyzing with Watson..."):
-                with open("temp_img.jpg", "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+            # Use NLU to generate description instead of visual recognition
+            with st.spinner("Generating creative description..."):
+                response = nlu.analyze(
+                    text=f"A {closest_color}-dominant image",
+                    features=Features(categories=CategoriesOptions(limit=3))
+                ).get_result()
                 
-                with open("temp_img.jpg", "rb") as images_file:
-                    results = visual_recognition.classify(
-                        images_file,
-                        threshold='0.6'
-                    ).get_result()
-                
-                st.subheader("🔍 Watson Analysis")
-                for obj in results['images'][0]['classifiers'][0]['classes'][:3]:
-                    st.write(f"- {obj['class']} (confidence: {obj['score']:.0%})")
+                st.subheader("🎨 Creative Interpretation")
+                if response.get('categories'):
+                    for category in response['categories']:
+                        st.write(f"- {category['label']} (score: {category['score']:.2f})")
+                else:
+                    st.write("No categories found. Try another image.")
 
     except Exception as e:
         st.error(f"Service error: {str(e)}")
