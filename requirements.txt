@@ -1,8 +1,11 @@
-streamlit
-opencv-python-headless
-scipy
-requests
-python-dotenv
-ibm-watson
-ibm-cloud-sdk-core
-Pillow
+# Core packages
+streamlit==1.29.0
+opencv-python-headless==4.8.0.76
+numpy==1.26.4
+scipy==1.13.0
+requests==2.31.0
+python-dotenv==1.0.0
+
+# IBM Watson packages (updated versions)
+ibm-watson==7.0.0  # Newer version with Python 3.13 support
+ibm-cloud-sdk-core==3.18.0
