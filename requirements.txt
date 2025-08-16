@@ -1,7 +1,7 @@
 streamlit
-opencv-python
+opencv-python-headless==4.5.5.64  # Lighter version
 numpy
 scipy
 requests
 python-dotenv
-ibm-watson-machine-learning
+ibm-watson-machine-learning==1.0.391 --no-deps
