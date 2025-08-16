@@ -3,8 +3,8 @@ import cv2
 import numpy as np
 from scipy.io.wavfile import write
 import requests
+from ibm_watson import VisualRecognitionV3
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
-from ibm_watson_machine_learning.foundation_models import Model
 import os
 from dotenv import load_dotenv
 
@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- App Title ---
-st.title("🎨 Synesthesia AI: Real-Time Color Music (Granite-3b)")
+st.title("🎨 Synesthesia AI: Real-Time Color Music")
 
 # --- 1. Automatic IAM Token Generation ---
 def get_iam_token(api_key):
@@ -28,8 +28,10 @@ def get_iam_token(api_key):
     response = requests.post(url, headers=headers, data=data)
     return response.json().get("access_token")
 
-# --- 2. Initialize Services ---
+# --- 2. Initialize Watson Services ---
 api_key = os.getenv("WATSON_API_KEY") or st.secrets.get("WATSON_API_KEY")
+service_url = os.getenv("SERVICE_URL") or "https://api.us-south.visual-recognition.watson.cloud.ibm.com"
+
 if not api_key:
     api_key = st.text_input("Enter IBM Cloud API Key", type="password")
 
@@ -38,14 +40,14 @@ if api_key:
         # Get fresh IAM token
         iam_token = get_iam_token(api_key)
         
-        # Initialize Granite-3b-008 model
-        granite_model = Model(
-            model_id="ibm-granite/granite-3b-008",
-            credentials={"apikey": api_key, "iam_token": iam_token},
-            project_id=os.getenv("PROJECT_ID") or st.secrets.get("PROJECT_ID"),
-            url="https://us-south.ml.cloud.ibm.com"
+        # Initialize Watson Visual Recognition
+        authenticator = IAMAuthenticator(api_key)
+        visual_recognition = VisualRecognitionV3(
+            version='2018-03-19',
+            authenticator=authenticator
         )
-        
+        visual_recognition.set_service_url(service_url)
+
         # --- 3. Image Processing Pipeline ---
         uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
         
@@ -97,14 +99,24 @@ if api_key:
             audio = (audio * 32767 * 0.3 / np.max(np.abs(audio))).astype(np.int16)
             st.audio(audio, sample_rate=sr)
             
-            # --- 5. Granite-3b Analysis ---
-            with st.spinner("Generating poetic analysis..."):
-                prompt = f"""Describe this {closest_color}-dominant image synesthetically, 
-                connecting its visual elements to musical concepts in a creative way."""
+            # --- 5. Watson Image Analysis ---
+            with st.spinner("Analyzing image with Watson..."):
+                # Save temp image for analysis
+                with open("temp_img.jpg", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
                 
-                response = granite_model.generate(prompt)
-                st.subheader("🎭 Creative Interpretation")
-                st.write(response["results"][0]["generated_text"])
+                # Get image analysis
+                with open("temp_img.jpg", "rb") as images_file:
+                    results = visual_recognition.classify(
+                        images_file,
+                        threshold='0.6',
+                        classifier_ids='default').get_result()
+                
+                # Display results
+                st.subheader("🔍 Image Analysis")
+                classes = results['images'][0]['classifiers'][0]['classes']
+                for obj in sorted(classes, key=lambda x: x['score'], reverse=True)[:3]:
+                    st.write(f"{obj['class']} (confidence: {obj['score']:.0%})")
                 
     except Exception as e:
         st.error(f"Error: {str(e)}")
