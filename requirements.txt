@@ -1,8 +1,8 @@
 streamlit
 opencv-python-headless
-numpy
 scipy
 requests
 python-dotenv
 ibm-watson
 ibm-cloud-sdk-core
+Pillow
