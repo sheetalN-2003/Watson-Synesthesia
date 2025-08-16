@@ -15,7 +15,7 @@ st.title("🎨 Watson Synesthesia: Color to Sound")
 
 # --- Configuration ---
 API_KEY = os.getenv("WATSON_API_KEY") or st.secrets.get("WATSON_API_KEY")
-SERVICE_URL = "https://api.us-south.visual-recognition.watson.cloud.ibm.com/instances/YOUR_INSTANCE_ID"  # Replace with your instance ID
+SERVICE_URL = "https://api.us-south.visual-recognition.watson.cloud.ibm.com/instances/56c259fe-85fb-488b-bbe5-b6abfe0630c9"  # Replace with your instance ID
 
 if not API_KEY:
     API_KEY = st.text_input("Enter IBM Cloud API Key", type="password")
