@@ -1,0 +1,6 @@
+streamlit
+opencv-python
+numpy
+scipy
+ibm-watson
+python-dotenv
