@@ -1,5 +1,5 @@
 """
-Enhanced Streamlit app with IBM Watson integration
+Streamlit application for Synesthesia Experience
 """
 
 import os
@@ -7,10 +7,7 @@ import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
-import matplotlib.pyplot as plt
-from io import BytesIO
-from dotenv import load_dotenv
-
+from pydub import AudioSegment
 from synesthesia_ai import (
     caption_image,
     detect_objects,
@@ -19,15 +16,13 @@ from synesthesia_ai import (
     text_to_speech,
     describe_object_sound,
     generate_object_sound,
-    plot_audio_waveform
+    generate_audio_visualization,
+    USE_IBM_SERVICES
 )
 
-# Load environment variables
-load_dotenv()
-
-# App configuration
+# Configure page
 st.set_page_config(
-    page_title="AI Synesthesia Experience with Watson",
+    page_title="Synesthesia Experience",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -58,8 +53,6 @@ st.markdown("""
         border-radius: 4px;
         font-size: 0.8em;
         font-weight: bold;
-        display: inline-block;
-        margin-left: 5px;
     }
     .highlight {
         background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(102,126,234,0.2) 100%);
@@ -70,15 +63,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# App title and description
-st.title("🎨 AI Synesthesia Experience with Watson")
+# App header
+st.title("🎨 Synesthesia Experience")
 st.markdown("""
 <div style="text-align: center; margin-bottom: 30px;">
-    <p style="font-size: 18px;">An immersive experience powered by IBM Watson that translates visual input into rich audio descriptions and unique soundscapes</p>
+    <p style="font-size: 18px;">
+        Translate visual input into rich audio experiences
+        {" " + "<span class='ibm-badge'>IBM Watson</span>" if USE_IBM_SERVICES else ""}
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar with settings
+# Sidebar
 with st.sidebar:
     st.header("Settings")
     mode = st.radio(
@@ -92,207 +88,151 @@ with st.sidebar:
     voice_speed = st.slider("Voice Speed", 0.5, 2.0, 1.0, 0.1)
     sound_duration = st.slider("Sound Duration (sec)", 0.5, 3.0, 1.5, 0.1)
     
-    # IBM Watson status
-    st.markdown("---")
-    if os.getenv("USE_IBM_SERVICES", "").lower() in ("1", "true", "yes"):
-        st.success("IBM Watson services: Active")
-        if os.getenv("IBM_API_KEY"):
-            st.caption(f"Project ID: {os.getenv('WATSONX_PROJECT_ID', 'Not configured')}")
-    else:
-        st.info("IBM Watson services: Using local models")
-    
     st.markdown("---")
     st.info("""
     **Tips:**
-    - For best results with Watson, use clear images with one main subject
+    - For best results, use clear images with one main subject
     - Try different objects to hear unique sound signatures
     - Explore the Sound Explorer mode to customize audio
     """)
 
+# Helper function for audio processing
+def create_audio_file(audio_segment: AudioSegment) -> str:
+    """Create temporary audio file from segment"""
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+        audio_segment.export(tmp.name, format="mp3")
+        return tmp.name
+
 # Main app logic
 if mode == "Camera Snapshot":
     st.subheader("📸 Camera Experience")
-    st.markdown("Show an object to your camera and experience its sound signature")
+    img_file = st.camera_input("Take a photo")
     
-    img_file = st.camera_input("Take a photo with your camera")
-    if img_file is not None:
+    if img_file:
         img = Image.open(img_file).convert("RGB")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.image(img, caption="Your Image", use_column_width=True)
+            st.image(img, use_column_width=True)
+            objects = detect_objects(img)
             
-            with st.spinner("Detecting objects..."):
-                frame = np.array(img)
-                objects = detect_objects(frame)
-                
             if objects:
-                top_object = objects[0]
-                st.success(f"Primary object detected: **{top_object.capitalize()}**")
+                obj = objects[0]
+                st.success(f"Detected: {obj.capitalize()}")
+                st.markdown(f"**Sound:** {describe_object_sound(obj)}")
                 
                 # Generate and play sound
-                with st.spinner("Creating soundscape..."):
-                    sound_desc = describe_object_sound(top_object)
-                    st.markdown(f"**Sound palette:** {sound_desc}")
-                    
-                    tmp_sound = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                    generate_object_sound(top_object, tmp_sound.name)
-                    
-                    with st.expander("Sound Visualization"):
-                        waveform = plot_audio_waveform(tmp_sound.name)
-                        if waveform:
-                            st.image(waveform, use_column_width=True)
-                    
-                    st.audio(tmp_sound.name, format="audio/mp3")
+                sound = generate_object_sound(obj)
+                sound_file = create_audio_file(sound)
+                st.audio(sound_file, format="audio/mp3")
                 
                 # Generate description
-                with st.spinner("Creating description..."):
-                    poem = poetic_line(f"A {top_object}")
-                    st.markdown(f"**Poetic impression:** {poem}")
-                    
-                    tmp_voice = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                    text_to_speech(poem, tmp_voice.name)
-                    st.audio(tmp_voice.name, format="audio/mp3")
+                poem = poetic_line(f"A {obj}")
+                st.markdown(f"**Description:** {poem}")
+                
+                # Generate voice
+                voice_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+                if text_to_speech(poem, voice_file):
+                    st.audio(voice_file, format="audio/mp3")
             else:
-                st.info("No objects confidently detected. Try getting closer to your subject.")
+                st.info("No objects detected")
 
 elif mode == "Image Upload":
     st.subheader("🖼️ Image Experience")
-    st.markdown("Upload an image to explore its audio representation")
+    uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
     
-    uploaded = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
-    if uploaded is not None:
+    if uploaded:
         img = Image.open(uploaded).convert("RGB")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.image(img, caption="Uploaded Image", use_column_width=True)
+            st.image(img, use_column_width=True)
             
         with col2:
-            with st.spinner("Analyzing image..."):
-                caption = caption_image(img)
-                st.markdown(f"**Image caption:** {caption}")
+            caption = caption_image(img)
+            st.markdown(f"**Caption:** {caption}")
+            
+            poem = poetic_line(caption)
+            st.markdown(f"**Poetic Description:** {poem}")
+            
+            # Generate combined audio
+            voice_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+            text_to_speech(poem, voice_file)
+            
+            objects = detect_objects(img)[:3]
+            if objects:
+                soundscape = AudioSegment.silent(duration=1000)
+                for obj in objects:
+                    sound = generate_object_sound(obj)
+                    soundscape = soundscape.overlay(sound)
                 
-                poem = poetic_line(caption)
-                st.markdown(f"**Poetic interpretation:** {poem}")
-                
-                # Generate audio for all detected objects
-                frame = np.array(img)
-                objects = detect_objects(frame)
-                
-                if objects:
-                    st.markdown("**Detected objects:**")
-                    for obj in objects[:3]:  # Limit to top 3 objects
-                        sound_desc = describe_object_sound(obj)
-                        st.markdown(f"- {obj.capitalize()}: {sound_desc}", unsafe_allow_html=True)
-                
-                # Create combined audio experience
-                tmp_combined = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                
-                # Generate voice description
-                tmp_voice = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                text_to_speech(poem, tmp_voice.name)
-                
-                # Generate soundscape
-                if objects:
-                    soundscape = AudioSegment.silent(duration=1000)  # 1s silence
-                    for obj in objects[:3]:  # Limit to 3 objects
-                        tmp_sound = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                        generate_object_sound(obj, tmp_sound.name)
-                        obj_audio = AudioSegment.from_file(tmp_sound.name)
-                        soundscape = soundscape.overlay(obj_audio)
-                    
-                    # Combine voice and soundscape
-                    voice_audio = AudioSegment.from_file(tmp_voice.name)
-                    combined = voice_audio.overlay(soundscape)
-                    combined.export(tmp_combined.name, format="mp3")
-                else:
-                    AudioSegment.from_file(tmp_voice.name).export(tmp_combined.name, format="mp3")
-                
-                # Show waveform
-                with st.expander("Audio Visualization"):
-                    waveform = plot_audio_waveform(tmp_combined.name)
-                    if waveform:
-                        st.image(waveform, use_column_width=True)
-                
-                st.audio(tmp_combined.name, format="audio/mp3")
+                combined = AudioSegment.from_file(voice_file).overlay(soundscape)
+                combined_file = create_audio_file(combined)
+                st.audio(combined_file, format="audio/mp3")
+            else:
+                st.audio(voice_file, format="audio/mp3")
 
 elif mode == "Text Input":
     st.subheader("✍️ Text Experience")
-    st.markdown("Describe something and hear its sound representation")
+    text = st.text_area("Enter text to describe")
     
-    txt = st.text_area("Describe an object, scene, or feeling", height=100)
-    if st.button("Generate Experience"):
-        if txt.strip():
-            with st.spinner("Creating your experience..."):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    emotion = analyze_emotion_text(txt)
-                    st.markdown(f"**Emotion detected:** {emotion.capitalize()}")
-                    
-                    poem = poetic_line(txt)
-                    st.markdown(f"**Poetic interpretation:** {poem}")
-                
-                with col2:
-                    # Generate sound based on text
-                    tmp_sound = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                    generate_object_sound(txt, tmp_sound.name)
-                    
-                    with st.expander("Sound Visualization"):
-                        waveform = plot_audio_waveform(tmp_sound.name)
-                        if waveform:
-                            st.image(waveform, use_column_width=True)
-                    
-                    st.audio(tmp_sound.name, format="audio/mp3")
-                    
-                    # Generate voice
-                    tmp_voice = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                    text_to_speech(poem, tmp_voice.name)
-                    st.audio(tmp_voice.name, format="audio/mp3")
-        else:
-            st.warning("Please enter some text to generate an experience")
+    if st.button("Generate") and text.strip():
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            emotion = analyze_emotion_text(text)
+            st.markdown(f"**Emotion:** {emotion.capitalize()}")
+            
+            poem = poetic_line(text)
+            st.markdown(f"**Description:** {poem}")
+            
+            voice_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+            if text_to_speech(poem, voice_file):
+                st.audio(voice_file, format="audio/mp3")
+        
+        with col2:
+            sound = generate_object_sound(text)
+            sound_file = create_audio_file(sound)
+            
+            if viz := generate_audio_visualization(sound_file):
+                st.image(viz, use_column_width=True)
+            st.audio(sound_file, format="audio/mp3")
 
 else:  # Sound Explorer
     st.subheader("🎵 Sound Explorer")
-    st.markdown("Experiment with different sound parameters")
     
     col1, col2 = st.columns(2)
-    
     with col1:
-        wave_type = st.selectbox("Waveform Type", ["sine", "square", "pulse", "noise"])
-        freq = st.slider("Base Frequency (Hz)", 50, 1000, 220, 10)
-        duration = st.slider("Duration (seconds)", 0.5, 3.0, 1.5, 0.1)
-        
+        wave_type = st.selectbox("Wave Type", ["sine", "square", "pulse", "noise"])
+        freq = st.slider("Frequency (Hz)", 50, 1000, 220)
+        duration = st.slider("Duration (s)", 0.5, 3.0, 1.5)
+    
     with col2:
-        layers = st.slider("Number of Layers", 1, 5, 2)
-        detune = st.slider("Detune Amount (%)", 0, 50, 10)
+        layers = st.slider("Layers", 1, 5, 2)
+        detune = st.slider("Detune (%)", 0, 50, 10)
         volume = st.slider("Volume", 0, 20, 10)
     
     if st.button("Generate Sound"):
-        with st.spinner("Creating sound..."):
-            tmp_sound = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-            
-            # Generate multiple layers
-            base_audio = AudioSegment.silent(duration=0)
-            for i in range(layers):
-                layer_freq = freq * (1 + (i * detune/100))
-                layer = sound_generator.generate_tone(layer_freq, wave_type) - (20 - volume)
-                base_audio = base_audio.overlay(layer.pan(-0.5 + (i/(layers-1)) if layers > 1 else 0))
-            
-            base_audio.export(tmp_sound.name, format="mp3")
-            
-            with st.expander("Waveform Visualization"):
-                waveform = plot_audio_waveform(tmp_sound.name)
-                if waveform:
-                    st.image(waveform, use_column_width=True)
-            
-            st.audio(tmp_sound.name, format="audio/mp3")
+        base_audio = AudioSegment.silent(duration=int(duration*1000))
+        for i in range(layers):
+            layer_freq = freq * (1 + (i * detune/100))
+            layer = AudioSegment.silent(duration=int(duration*1000)).overlay(
+                getattr(AudioSegment, wave_type)(layer_freq).to_audio_segment(
+                    duration=int(duration*1000)
+                ) - (20 - volume)
+            )
+            pan = -0.5 + (i / max(1, layers-1))
+            base_audio = base_audio.overlay(layer.pan(pan))
+        
+        sound_file = create_audio_file(base_audio)
+        if viz := generate_audio_visualization(sound_file):
+            st.image(viz, use_column_width=True)
+        st.audio(sound_file, format="audio/mp3")
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; font-size: 14px;">
-    <p>AI Synesthesia Experience | Powered by IBM Watson and open-source AI</p>
+    <p>Synesthesia Experience | Combining AI models for multi-sensory experiences</p>
 </div>
 """, unsafe_allow_html=True)
