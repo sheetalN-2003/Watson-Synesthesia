@@ -278,7 +278,7 @@ else:  # Sound Explorer
             for i in range(layers):
                 layer_freq = freq * (1 + (i * detune/100))
                 layer = sound_generator.generate_tone(layer_freq, wave_type) - (20 - volume)
-                base_audio = base_audio.overlay(layer.pan(-0.5 + (i/(layers-1)) if layers > 1 else 0)
+                base_audio = base_audio.overlay(layer.pan(-0.5 + (i/(layers-1)) if layers > 1 else 0))
             
             base_audio.export(tmp_sound.name, format="mp3")
             
