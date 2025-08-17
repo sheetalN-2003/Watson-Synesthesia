@@ -1,97 +1,84 @@
+# app.py
 import streamlit as st
-import cv2
-import numpy as np
-from scipy.io.wavfile import write
-from ibm_watson import NaturalLanguageUnderstandingV1
-from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
+from PIL import Image
+import io
 import os
-from dotenv import load_dotenv
+from sonify import get_dominant_colors, rgb_to_freq, synthesize_tone_sequence
+from ibm_client import nlu_analyze_text, tts_synthesize, get_iam_token_from_apikey
+import base64
 
-# Load environment variables
-load_dotenv()
+st.set_page_config(page_title="Watson Synesthesia POC", layout="centered")
+st.title("Watson Synesthesia — POC")
 
-st.title("🎨 IBM Watson Synesthesia: Color to Sound")
+# ---------------------------
+# Configuration (from Streamlit secrets or env)
+# ---------------------------
+IBM_APIKEY = st.secrets.get("IBM_APIKEY", None) or os.environ.get("IBM_APIKEY")
+NLU_URL = st.secrets.get("NLU_URL", None) or os.environ.get("NLU_URL")
+TTS_URL = st.secrets.get("TTS_URL", None) or os.environ.get("TTS_URL")
 
-# Configuration
-API_KEY = os.getenv("WATSON_API_KEY") or st.secrets.get("WATSON_API_KEY")
-SERVICE_URL = os.getenv("SERVICE_URL") or "https://api.us-south.natural-language-understanding.watson.cloud.ibm.com"
+if not IBM_APIKEY:
+    st.warning("Set IBM_APIKEY in Streamlit secrets or environment to test NLU / TTS. Local sonification works without it.")
+# ---------------------------
 
-if not API_KEY:
-    API_KEY = st.text_input("Enter IBM Cloud API Key", type="password")
+st.header("1) Color Sonification (upload or camera)")
+img_file = st.file_uploader("Upload an image (or use camera below)", type=['png','jpg','jpeg'])
+cam_img = st.camera_input("Or take a photo with your camera")
 
-if API_KEY:
-    try:
-        # Initialize Watson service
-        authenticator = IAMAuthenticator(API_KEY)
-        nlu = NaturalLanguageUnderstandingV1(
-            version='2022-04-07',
-            authenticator=authenticator
-        )
-        nlu.set_service_url(SERVICE_URL)
+image = None
+if cam_img:
+    image = Image.open(cam_img)
+elif img_file:
+    image = Image.open(img_file)
 
-        # Image processing
-        uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
-        
-        if uploaded_file:
-            # Process image
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            st.image(img_rgb, use_container_width=True)
-            
-            # Color analysis
-            pixels = img_rgb.reshape(-1, 3)
-            pixels = np.float32(pixels)
-            _, labels, centers = cv2.kmeans(
-                pixels, 3, None,
-                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0),
-                10, cv2.KMEANS_RANDOM_CENTERS
-            )
-            dominant_color = np.uint8(centers[np.bincount(labels.flatten()).argmax()])
-            
-            # Sound generation
-            color_map = {
-                'red': (440, 'sine'),
-                'green': (523.25, 'square'),
-                'blue': (659.25, 'sawtooth')
+if image is not None:
+    st.image(image, caption="Input image", use_column_width=True)
+    n = st.slider("Number of dominant colors", 3, 8, 5)
+    colors = get_dominant_colors(image, n_colors=n)
+    st.write("Dominant colors (RGB):", colors)
+    freq_amp = [rgb_to_freq(c) for c in colors]
+    audio_bytes = synthesize_tone_sequence(freq_amp, duration_per_tone=st.slider("Tone duration (s)", 0.2, 1.5, 0.6))
+    st.audio(audio_bytes, format='audio/wav')
+    # show color swatches
+    cols = st.columns(len(colors))
+    for c,col in zip(colors,cols):
+        col.markdown(f"<div style='width:100%;height:60px;background:rgb{tuple(c)}'></div>", unsafe_allow_html=True)
+
+st.markdown("---")
+st.header("2) Text → Emotion → Flavor / Poetry (NLU + TTS)")
+user_text = st.text_area("Paste a line / caption / review to translate into 'flavor poetry' or emotions", height=120)
+if st.button("Analyze & Generate"):
+    if not IBM_APIKEY or not NLU_URL or not TTS_URL:
+        st.error("NLU/TTS credentials (IBM_APIKEY, NLU_URL, TTS_URL) required for this block. Sonification above works offline.")
+    else:
+        with st.spinner("Analyzing text for emotion..."):
+            nlu_resp = nlu_analyze_text(IBM_APIKEY, NLU_URL, user_text)
+            emotions = nlu_resp.get("emotion", {}).get("document", {}).get("emotion", {})
+        st.write("Emotion scores:", emotions)
+        # map top emotion to flavor / poetry heuristic
+        if emotions:
+            top = max(emotions.items(), key=lambda x: x[1])[0]
+            mapping = {
+                "joy": "sweet citrus, honeyed breeze",
+                "sadness": "deep umami, slow-brewed tea",
+                "anger": "fiery chili, black pepper crack",
+                "fear": "sour tang, metallic fizz",
+                "disgust": "bitter rind, chalky ash"
             }
-            
-            color_distances = {
-                'red': np.linalg.norm(dominant_color - [255, 0, 0]),
-                'green': np.linalg.norm(dominant_color - [0, 255, 0]),
-                'blue': np.linalg.norm(dominant_color - [0, 0, 255])
-            }
-            closest_color = min(color_distances, key=color_distances.get)
-            freq, wave_type = color_map[closest_color]
-            
-            # Generate audio
-            duration = 2.0
-            sr = 44100
-            t = np.linspace(0, duration, int(sr * duration), False)
-            
-            if wave_type == 'sine':
-                audio = np.sin(2 * np.pi * freq * t)
-            elif wave_type == 'square':
-                audio = np.sign(np.sin(2 * np.pi * freq * t))
-            else:  # sawtooth
-                audio = 2 * (t * freq - np.floor(0.5 + t * freq))
-            
-            audio = (audio * 32767 * 0.3 / np.max(np.abs(audio))).astype(np.int16)
-            st.audio(audio, sample_rate=sr)
-            
-            # Generate description
-            with st.spinner("Creating artistic interpretation..."):
-                response = nlu.analyze(
-                    text=f"Describe a {closest_color}-dominant image synesthetically",
-                    features={'keywords': {'limit': 3}}
-                ).get_result()
-                
-                st.subheader("🎭 Artistic Interpretation")
-                if 'keywords' in response:
-                    for kw in response['keywords'][:3]:
-                        st.write(f"- {kw['text']} (relevance: {kw['relevance']:.2f})")
-                
-    except Exception as e:
-        st.error(f"Service error: {str(e)}")
-else:
-    st.warning("Please provide your IBM Cloud credentials")
+            flavor = mapping.get(top, "complex spice")
+            poem = f"{user_text}\n→ Emotion: {top}  —  Flavor: {flavor}\nHaiku:\n{user_text[:20]} / {flavor} / echoes"
+            st.markdown(f"**Top emotion:** {top}  \n**Flavor-poem:** {poem}")
+            # synthesize TTS
+            with st.spinner("Generating speech..."):
+                try:
+                    audio = tts_synthesize(IBM_APIKEY, TTS_URL, poem)
+                    st.audio(audio, format='audio/wav')
+                except Exception as e:
+                    st.error(f"TTS failed: {e}")
+
+st.markdown("---")
+st.write("## Notes & Next steps")
+st.write("""
+- This POC uses local image color extraction + waveform synthesis for instant demos (works offline).
+- For IBM-based vision/emotion mapping in production: use IBM NLU for text emotion; visual emotion likely needs a vision model (watsonx or custom model), since Watson Visual Recognition was discontinued.
+""")
