@@ -1,20 +1,20 @@
 # Core framework
-streamlit==1.36.0
+streamlit
 
 # Image processing
-opencv-python-headless==4.9.0.80
-Pillow==10.3.0
+opencv-python-headless
+Pillow
 
 # Hugging Face Transformers (for BLIP, text generation etc.)
-transformers==4.41.2
+transformers
 
 # PyTorch (CPU-only, compatible with Streamlit Cloud)
-torch==2.3.1+cpu
-torchvision==0.18.1+cpu
-torchaudio==2.3.1+cpu
+torch
+torchvision
+torchaudio
 
 # Text-to-Speech
-TTS==0.22.0
+TTS
 
 # Object Detection (YOLOv8)
-ultralytics==8.2.50
+ultralytics
