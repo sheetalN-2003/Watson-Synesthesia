@@ -1,5 +1,5 @@
 """
-Enhanced Streamlit app with audio visualization and more interactive features
+Enhanced Streamlit app with IBM Watson integration
 """
 
 import os
@@ -9,7 +9,7 @@ import streamlit as st
 from PIL import Image
 import matplotlib.pyplot as plt
 from io import BytesIO
-import base64
+from dotenv import load_dotenv
 
 from synesthesia_ai import (
     caption_image,
@@ -19,11 +19,15 @@ from synesthesia_ai import (
     text_to_speech,
     describe_object_sound,
     generate_object_sound,
+    plot_audio_waveform
 )
+
+# Load environment variables
+load_dotenv()
 
 # App configuration
 st.set_page_config(
-    page_title="AI Synesthesia Experience",
+    page_title="AI Synesthesia Experience with Watson",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -47,8 +51,15 @@ st.markdown("""
         padding: 10px 24px;
         font-weight: bold;
     }
-    .stFileUploader>div>div>div>div {
-        color: #764ba2;
+    .ibm-badge {
+        background-color: #0062FF;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        font-weight: bold;
+        display: inline-block;
+        margin-left: 5px;
     }
     .highlight {
         background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(102,126,234,0.2) 100%);
@@ -60,10 +71,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App title and description
-st.title("🎨 AI Synesthesia Experience")
+st.title("🎨 AI Synesthesia Experience with Watson")
 st.markdown("""
 <div style="text-align: center; margin-bottom: 30px;">
-    <p style="font-size: 18px;">An immersive experience that translates visual input into rich audio descriptions and unique soundscapes</p>
+    <p style="font-size: 18px;">An immersive experience powered by IBM Watson that translates visual input into rich audio descriptions and unique soundscapes</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -81,33 +92,22 @@ with st.sidebar:
     voice_speed = st.slider("Voice Speed", 0.5, 2.0, 1.0, 0.1)
     sound_duration = st.slider("Sound Duration (sec)", 0.5, 3.0, 1.5, 0.1)
     
+    # IBM Watson status
+    st.markdown("---")
+    if os.getenv("USE_IBM_SERVICES", "").lower() in ("1", "true", "yes"):
+        st.success("IBM Watson services: Active")
+        if os.getenv("IBM_API_KEY"):
+            st.caption(f"Project ID: {os.getenv('WATSONX_PROJECT_ID', 'Not configured')}")
+    else:
+        st.info("IBM Watson services: Using local models")
+    
     st.markdown("---")
     st.info("""
     **Tips:**
-    - For best results, use clear images with one main subject
+    - For best results with Watson, use clear images with one main subject
     - Try different objects to hear unique sound signatures
     - Explore the Sound Explorer mode to customize audio
     """)
-
-# Audio visualization function
-def plot_audio_waveform(audio_path):
-    try:
-        from pydub import AudioSegment
-        audio = AudioSegment.from_file(audio_path)
-        samples = np.array(audio.get_array_of_samples())
-        
-        fig, ax = plt.subplots(figsize=(10, 2))
-        ax.plot(samples, color='#667eea')
-        ax.axis('off')
-        ax.margins(x=0)
-        
-        img_bytes = BytesIO()
-        plt.savefig(img_bytes, format='png', bbox_inches='tight', pad_inches=0, transparent=True)
-        plt.close()
-        img_bytes.seek(0)
-        return img_bytes
-    except Exception:
-        return None
 
 # Main app logic
 if mode == "Camera Snapshot":
@@ -138,10 +138,10 @@ if mode == "Camera Snapshot":
                     tmp_sound = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                     generate_object_sound(top_object, tmp_sound.name)
                     
-                    # Audio visualization
-                    waveform = plot_audio_waveform(tmp_sound.name)
-                    if waveform:
-                        st.image(waveform, use_column_width=True)
+                    with st.expander("Sound Visualization"):
+                        waveform = plot_audio_waveform(tmp_sound.name)
+                        if waveform:
+                            st.image(waveform, use_column_width=True)
                     
                     st.audio(tmp_sound.name, format="audio/mp3")
                 
@@ -192,7 +192,6 @@ elif mode == "Image Upload":
                 # Generate voice description
                 tmp_voice = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                 text_to_speech(poem, tmp_voice.name)
-                voice_audio = AudioSegment.from_file(tmp_voice.name)
                 
                 # Generate soundscape
                 if objects:
@@ -204,15 +203,17 @@ elif mode == "Image Upload":
                         soundscape = soundscape.overlay(obj_audio)
                     
                     # Combine voice and soundscape
+                    voice_audio = AudioSegment.from_file(tmp_voice.name)
                     combined = voice_audio.overlay(soundscape)
                     combined.export(tmp_combined.name, format="mp3")
                 else:
-                    voice_audio.export(tmp_combined.name, format="mp3")
+                    AudioSegment.from_file(tmp_voice.name).export(tmp_combined.name, format="mp3")
                 
                 # Show waveform
-                waveform = plot_audio_waveform(tmp_combined.name)
-                if waveform:
-                    st.image(waveform, use_column_width=True)
+                with st.expander("Audio Visualization"):
+                    waveform = plot_audio_waveform(tmp_combined.name)
+                    if waveform:
+                        st.image(waveform, use_column_width=True)
                 
                 st.audio(tmp_combined.name, format="audio/mp3")
 
@@ -238,9 +239,10 @@ elif mode == "Text Input":
                     tmp_sound = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                     generate_object_sound(txt, tmp_sound.name)
                     
-                    waveform = plot_audio_waveform(tmp_sound.name)
-                    if waveform:
-                        st.image(waveform, use_column_width=True)
+                    with st.expander("Sound Visualization"):
+                        waveform = plot_audio_waveform(tmp_sound.name)
+                        if waveform:
+                            st.image(waveform, use_column_width=True)
                     
                     st.audio(tmp_sound.name, format="audio/mp3")
                     
@@ -276,13 +278,14 @@ else:  # Sound Explorer
             for i in range(layers):
                 layer_freq = freq * (1 + (i * detune/100))
                 layer = sound_generator.generate_tone(layer_freq, wave_type) - (20 - volume)
-                base_audio = base_audio.overlay(layer.pan(-0.5 + (i/(layers-1)) if layers > 1 else 0))
+                base_audio = base_audio.overlay(layer.pan(-0.5 + (i/(layers-1)) if layers > 1 else 0)
             
             base_audio.export(tmp_sound.name, format="mp3")
             
-            waveform = plot_audio_waveform(tmp_sound.name)
-            if waveform:
-                st.image(waveform, use_column_width=True)
+            with st.expander("Waveform Visualization"):
+                waveform = plot_audio_waveform(tmp_sound.name)
+                if waveform:
+                    st.image(waveform, use_column_width=True)
             
             st.audio(tmp_sound.name, format="audio/mp3")
 
@@ -290,6 +293,6 @@ else:  # Sound Explorer
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; font-size: 14px;">
-    <p>AI Synesthesia Experience | Combining computer vision, NLP, and audio synthesis</p>
+    <p>AI Synesthesia Experience | Powered by IBM Watson and open-source AI</p>
 </div>
 """, unsafe_allow_html=True)
