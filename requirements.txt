@@ -5,7 +5,7 @@ transformers>=4.30.0
 torch>=2.8.0
 torchvision>=0.23.0
 torchaudio>=2.8.0
-gTTS>=2.3.0
+gTTS
 huggingface-hub>=0.18.0
 ultralytics>=8.0.0
 ibm-watsonx-ai
