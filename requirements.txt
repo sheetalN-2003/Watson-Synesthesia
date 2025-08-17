@@ -1,12 +1,11 @@
-# Core packages
-streamlit==1.32.0
-opencv-python-headless==4.9.0.80
-numpy==1.26.4
-scipy==1.13.0
-requests==2.31.0
-python-dotenv==1.0.0
-
-# IBM Watson packages (updated versions)
-ibm-watson==7.0.0
-ibm-cloud-sdk-core==3.18.0
-setuptools==69.0.0
+streamlit>=1.20
+ibm-watson>=6.0.0
+ibm-cloud-sdk-core>=3.16.0
+numpy
+scikit-learn
+opencv-python-headless
+pydub
+soundfile
+python-multipart
+matplotlib
+Pillow
