@@ -1,17 +1,18 @@
-streamlit>=1.32.0
-opencv-python-headless>=4.8.0
-Pillow>=10.0.0
-torch>=2.0.0
-transformers>=4.35.0
-gtts>=2.4.0
-numpy>=1.24.0
-torchvision>=0.15.0
-torchaudio>=2.0.0
-huggingface-hub>=0.19.0
-ultralytics>=8.0.0
-pydub>=0.25.1
-librosa>=0.10.0
-requests>=2.31.0
-matplotlib>=3.7.0
-python-dotenv>=1.0.0  # For local environment variable management
-ibm-watson>=6.1.0  # Official IBM Watson SDK (optional)
+streamlit==1.32.2
+opencv-python-headless==4.8.1.78
+Pillow==10.1.0
+torch==2.2.1
+transformers==4.38.2
+gtts==2.4.0
+numpy==1.26.4
+torchvision==0.17.1
+torchaudio==2.2.1
+huggingface-hub==0.20.3
+ultralytics==8.1.0
+pydub==0.25.1
+librosa==0.10.1
+requests==2.31.0
+matplotlib==3.8.2
+python-dotenv==1.0.0
+ibm-watson==6.1.0
+tqdm==4.66.1
