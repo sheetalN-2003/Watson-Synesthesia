@@ -1,7 +1,7 @@
 import cv2
 import torch
 from transformers import pipeline, BlipProcessor, BlipForConditionalGeneration
-from TTS.api import TTS
+import pyttsx3
 from ibm_watsonx_ai import APIClient
 import os
 from PIL import Image
@@ -20,8 +20,14 @@ caption_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-caption
 caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
 emotion_analyzer = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base")
 
-# ---------- TTS Setup ----------
-tts = TTS("tts_models/en/vctk/vits")
+# ---------- TTS Setup (pyttsx3 instead of Coqui TTS) ----------
+engine = pyttsx3.init()
+
+def text_to_speech(text: str, output="output.wav"):
+    """Convert text to speech and save to file"""
+    engine.save_to_file(text, output)
+    engine.runAndWait()
+    return output
 
 # ---------- Object Detection ----------
 obj_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
@@ -62,7 +68,3 @@ def detect_objects(frame):
     """Detect objects in live camera frame"""
     results = obj_model(frame)
     return results.pandas().xyxy[0]['name'].tolist()
-
-def text_to_speech(text: str, output="output.wav"):
-    tts.tts_to_file(text=text, file_path=output)
-    return output
